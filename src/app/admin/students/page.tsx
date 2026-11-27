@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { ui } from "@/components/ui";
 import { ImportForm } from "./import-form";
+import { BulkPinPanel } from "./pin-panels";
 
 type Row = {
   id: string;
@@ -102,6 +103,13 @@ export default async function StudentsPage({
           </table>
         </div>
       </section>
+
+      {isAdmin && (
+        <section className={ui.card}>
+          <h2 className={`${ui.h2} mb-3`}>App PINs</h2>
+          <BulkPinPanel />
+        </section>
+      )}
 
       {isAdmin && (
         <section className={ui.card}>

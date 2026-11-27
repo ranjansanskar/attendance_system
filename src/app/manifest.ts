@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Ranjan Tutorials Attendance",
     short_name: "Attendance",
     description: "Check in to your Ranjan Tutorials batch",
-    start_url: "/",
+    start_url: "/s",
     display: "standalone",
     background_color: "#ffffff",
     theme_color: "#2563eb",

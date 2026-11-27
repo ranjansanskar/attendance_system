@@ -14,7 +14,7 @@ export async function signIn(_prev: ActionState, formData: FormData): Promise<Ac
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: "Wrong email or password." };
 
-  redirect(next.startsWith("/admin") ? next : "/admin");
+  redirect(/^\/(admin|kiosk)(\/|$)/.test(next) ? next : "/admin");
 }
 
 export async function signOut() {

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { normalizePhone } from "@/lib/phone";
 import { parseCsv } from "@/lib/csv";
+import { generatePin, hashPin } from "@/lib/crypto";
 import type { ActionState } from "@/components/ui";
 
 const phone = z.string().transform((v, ctx) => {
@@ -107,6 +108,61 @@ export async function setStudentActive(id: string, active: boolean) {
   await supabase.from("students").update({ active }).eq("id", id);
   revalidatePath("/admin/students");
   revalidatePath(`/admin/students/${id}`);
+}
+
+export type PinResult = { pin?: string; error?: string } | undefined;
+
+/** Creates a new 6-digit PIN for one student. Shown once to the admin; only the hash is stored. */
+export async function resetStudentPin(id: string, _prev: PinResult): Promise<PinResult> {
+  const { supabase } = await requireAdmin();
+  const pin = generatePin();
+  const { error } = await supabase
+    .from("students")
+    .update({ pin_hash: await hashPin(pin), pin_set_at: new Date().toISOString(), pin_failed_count: 0, pin_locked_until: null })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/admin/students/${id}`);
+  return { pin };
+}
+
+/** Unlinks the student's phone so they can log in on a new one. Logs them out everywhere. */
+export async function resetStudentPhone(id: string) {
+  const { supabase } = await requireAdmin();
+  await supabase
+    .from("devices")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("student_id", id)
+    .eq("kind", "student")
+    .is("revoked_at", null);
+  revalidatePath(`/admin/students/${id}`);
+}
+
+export type BulkPinResult = { pins?: { roll_no: string; name: string; pin: string }[]; error?: string } | undefined;
+
+/** Generates PINs for every active student who doesn't have one yet, for printing PIN slips. */
+export async function generateMissingPins(_prev: BulkPinResult): Promise<BulkPinResult> {
+  const { supabase } = await requireAdmin();
+  const { data, error } = await supabase
+    .from("students")
+    .select("id, roll_no, name")
+    .eq("active", true)
+    .is("pin_hash", null);
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Every active student already has a PIN. Reset individual PINs from a student's page." };
+
+  const pins: { roll_no: string; name: string; pin: string }[] = [];
+  for (const s of data) {
+    const pin = generatePin();
+    const { error: upErr } = await supabase
+      .from("students")
+      .update({ pin_hash: await hashPin(pin), pin_set_at: new Date().toISOString() })
+      .eq("id", s.id)
+      .is("pin_hash", null);
+    if (!upErr) pins.push({ roll_no: s.roll_no, name: s.name, pin });
+  }
+  pins.sort((a, b) => a.roll_no.localeCompare(b.roll_no, undefined, { numeric: true }));
+  revalidatePath("/admin/students");
+  return { pins };
 }
 
 /**

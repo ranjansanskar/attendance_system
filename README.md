@@ -11,8 +11,8 @@ Stack: Next.js 15 + TypeScript + Tailwind · Supabase (Postgres, Auth, Storage, 
 |---|---|---|
 | 0 | Accounts, domain, WhatsApp setup | **Your steps below** |
 | 1 | Schema, staff login, batches, students, CSV import, holidays, settings, PWA shell | **Done** |
-| 2 | Rotating QR kiosk, student login, device lock, GPS check | Next |
-| 3 | Face enrollment + selfie/blink verification | |
+| 2 | Rotating QR kiosk, student login, device lock, GPS check | **Done**: see setup below |
+| 3 | Face enrollment + selfie/blink verification | Next |
 | 4 | Kiosk B (no smartphone) + teacher override | |
 | 5 | WhatsApp absent alerts | |
 | 6 | Reports + exports | |
@@ -99,11 +99,58 @@ Open http://localhost:3000 → **Staff login**.
 Security: every table has Row Level Security. Only staff can read; only admins can change setup data;
 teachers can mark attendance.
 
+## Phase 2: setup (about 10 minutes)
+
+1. **Database:** Supabase → SQL Editor → New query → paste
+   [`supabase/migrations/0002_student_login.sql`](supabase/migrations/0002_student_login.sql) → Run.
+2. **Local secrets:** Supabase → Project Settings → API → copy the **service_role** key (click Reveal) and paste it
+   after `SUPABASE_SERVICE_ROLE_KEY=` in `.env.local`. `APP_SECRET` is already filled in locally.
+   Never share the service_role key or put it in a `NEXT_PUBLIC_` variable.
+3. **Vercel:** Project → Settings → Environment Variables → add
+   - `SUPABASE_SERVICE_ROLE_KEY` = the same service_role key
+   - `APP_SECRET` = a new random value (run `openssl rand -base64 48` in Terminal and paste the output)
+
+   Then Deployments → ⋯ on the latest → **Redeploy** (or push the new code to GitHub).
+4. **Institute location:** Admin → Settings → enter latitude/longitude (Google Maps → long-press the entrance).
+   Until it is set, the GPS check is skipped.
+
+## Phase 2: how it works
+
+- **Kiosk (`/kiosk`):** log in as staff on the entrance laptop, open *Open kiosk ↗*, press *Full screen*.
+  The QR changes every 15 s; a scanned code works for at most 30 s. A side panel shows who just checked in.
+- **Student app (`/s`):** a student logs in with **roll number + 6-digit PIN**. The first phone they log in on becomes
+  their phone; the account will not work on any other phone, and one phone cannot be used by two students.
+  If a student changes phones: Admin → student → *Reset phone*.
+- **PINs:** Admin → Students → *Generate PINs for students without one* → *Print slips*. Or one at a time on a
+  student's page (*Generate PIN / Reset PIN*). 5 wrong PINs lock the account for 15 minutes.
+- **Check-in:** *Scan QR to check in* → camera scans the kiosk QR → phone sends its GPS location → the server checks
+  the QR is fresh, the phone is registered, the student is within the radius, and a batch is open. A batch is open from
+  **15 min before start until it ends**. After the late cutoff the student is marked **Late**. Scanning the kiosk QR with the
+  phone's normal camera app also works (it opens the check-in link).
+- **Cancelled/holiday** batches refuse check-in.
+- Admin → a batch's page shows today's status per student; a student's page shows their recent attendance and
+  distance from the institute at each check-in.
+
+**iPhone note:** an app added to the iPhone home screen keeps its own login, separate from Safari. Students should add
+the app to the home screen **first** and log in there. If they logged in in Safari first, use *Reset phone*.
+
+### Test it yourself
+1. Create a batch whose time includes *now* (for example, start 15 minutes from now).
+2. Add a student in that batch → generate a PIN.
+3. On the laptop: open `/kiosk`. On your phone: open your Vercel URL (`https://<project>.vercel.app/s/login`),
+   log in with the roll number + PIN, tap *Scan QR to check in*, scan the laptop screen.
+4. The kiosk panel shows the check-in; the batch page shows the student as present.
+
+Camera and GPS need HTTPS, so test phones against the Vercel URL, not `http://<laptop-ip>:3000`.
+
 ## Project layout
 ```
 supabase/migrations/   SQL schema (run in Supabase SQL editor)
 src/app/login/         staff login
 src/app/admin/         dashboard, batches, students, settings
+src/app/kiosk/         rotating QR screen for the entrance
+src/app/s/             student app: login, home, QR scanner
+src/app/api/           check-in and kiosk endpoints
 src/lib/               Supabase clients, auth guards, time (IST), phone + CSV helpers
 public/sw.js           service worker
 ```

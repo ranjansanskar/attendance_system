@@ -6,6 +6,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Skip static files and the PWA assets.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|icon-.*\\.png).*)"],
+  // Only staff areas use Supabase Auth; student pages use their own signed cookie and skip this.
+  matcher: ["/admin/:path*", "/kiosk/:path*", "/login", "/api/kiosk/:path*"],
 };

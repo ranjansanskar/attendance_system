@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-/** Refreshes the Supabase session cookie and guards /admin routes. */
+/** Refreshes the Supabase session cookie and guards staff routes (/admin, /kiosk). */
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -26,7 +26,8 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && request.nextUrl.pathname.startsWith("/admin")) {
+  const path = request.nextUrl.pathname;
+  if (!user && (path.startsWith("/admin") || path.startsWith("/kiosk"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", request.nextUrl.pathname);

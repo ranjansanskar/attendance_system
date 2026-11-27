@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
-import { todayIST } from "@/lib/time";
+import { formatClockIST, todayIST } from "@/lib/time";
 import { ui } from "@/components/ui";
 import { BatchForm, type BatchValues } from "../batch-form";
 import { SessionForm } from "../session-form";
@@ -12,7 +12,7 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
   const { supabase, staff } = await requireStaff();
   const today = todayIST();
 
-  const [{ data: batch }, { data: members }, { data: sessions }] = await Promise.all([
+  const [{ data: batch }, { data: members }, { data: sessions }, { data: todayRows }] = await Promise.all([
     supabase.from("batches").select("*").eq("id", id).maybeSingle(),
     supabase
       .from("student_batches")
@@ -25,8 +25,19 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
       .neq("status", "scheduled")
       .gte("session_date", today)
       .order("session_date"),
+    supabase
+      .from("attendance")
+      .select("student_id, status, checked_in_at, method, batch_sessions!inner(batch_id, session_date)")
+      .eq("batch_sessions.batch_id", id)
+      .eq("batch_sessions.session_date", today),
   ]);
   if (!batch) notFound();
+  const todayByStudent = new Map(
+    ((todayRows ?? []) as { student_id: string; status: string; checked_in_at: string | null; method: string }[]).map((r) => [
+      r.student_id,
+      r,
+    ]),
+  );
 
   const students = ((members ?? []) as unknown as { students: { id: string; roll_no: string; name: string; checkin_method: string; active: boolean } }[])
     .map((m) => m.students)
@@ -81,6 +92,7 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
                 <th className={ui.th}>Roll no</th>
                 <th className={ui.th}>Name</th>
                 <th className={ui.th}>Check-in</th>
+                <th className={ui.th}>Today</th>
               </tr>
             </thead>
             <tbody>
@@ -91,6 +103,19 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
                     <Link className="underline" href={`/admin/students/${s.id}`}>{s.name}</Link>
                   </td>
                   <td className={ui.td}>{s.checkin_method === "kiosk" ? "Kiosk" : "Phone"}</td>
+                  <td className={ui.td}>
+                    {(() => {
+                      const r = todayByStudent.get(s.id);
+                      if (!r) return <span className="text-zinc-400">—</span>;
+                      const color = r.status === "absent" ? "text-red-600" : r.status === "late" ? "text-amber-600" : "text-green-700";
+                      return (
+                        <span className={color}>
+                          {r.status}
+                          {r.checked_in_at ? ` · ${formatClockIST(r.checked_in_at)}` : ""}
+                        </span>
+                      );
+                    })()}
+                  </td>
                 </tr>
               ))}
             </tbody>
